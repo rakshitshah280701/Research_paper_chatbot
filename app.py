@@ -1,8 +1,9 @@
 import streamlit as st
+import torch
 from extractText import extract_text_from_pdf
 from summarizeText import summarize_text
 from faiss import embed_text, setup_faiss_index
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 from huggingface_hub import login
 
 def main():
