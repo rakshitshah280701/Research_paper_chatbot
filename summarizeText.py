@@ -1,31 +1,37 @@
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
-import time
-from langchain_community.embeddings import HuggingFaceEmbeddings
+import numpy as np
+import faiss
 
-def summarize_text(text, model_name, huggingface_token, max_chunk_length=512):
-    start_time = time.time()
+# Define your Hugging Face token
+HUGGINGFACE_TOKEN = "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"
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=huggingface_token)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, use_auth_token=huggingface_token)
+# Load model and tokenizer
+model_name = "t5-small"
+tokenizer = T5Tokenizer.from_pretrained(model_name, token=HUGGINGFACE_TOKEN)
+model = T5ForConditionalGeneration.from_pretrained(model_name, token=HUGGINGFACE_TOKEN)
 
-    chunks = [text[i:i + max_chunk_length] for i in range(0, len(text), max_chunk_length)]
-    summaries = []
+# Initialize FAISS index
+dimension = 512  # Adjust according to your model's output size
+index = faiss.IndexFlatL2(dimension)
 
-    for chunk in chunks:
-        inputs = tokenizer(chunk, return_tensors="pt", max_length=max_chunk_length, truncation=True)
-        outputs = model.generate(inputs.input_ids, max_length=150, min_length=30, do_sample=False)
-        summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        summaries.append(summary)
+def generate_summary(text):
+    inputs = tokenizer.encode("summarize: " + text, return_tensors="pt", max_length=512, truncation=True)
+    summary_ids = model.generate(inputs, max_length=150, min_length=40, length_penalty=2.0, num_beams=4, early_stopping=True)
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return summary
 
-    print(f"Text summarized in {time.time() - start_time:.2f} seconds")
-    return " ".join(summaries)
+def embed_text(text):
+    inputs = tokenizer.encode(text, return_tensors="pt", max_length=512, truncation=True)
+    with torch.no_grad():
+        outputs = model.encoder(inputs)
+    embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+    return embedding
 
-def embed_text(texts, model_name, huggingface_token):
-    start_time = time.time()
-
-    embeddings_model = HuggingFaceEmbeddings(model_name=model_name, huggingfacehub_api_token=huggingface_token)
-    embeddings = embeddings_model.embed_documents(texts)
-
-    print(f"Text embedded in {time.time() - start_time:.2f} seconds")
-    return embeddings
+def add_to_index(text):
+    summary = generate_summary(text)
+    embedding = embed_text(summary)
+    if embedding.shape[1] != dimension:
+        raise ValueError(f"Embedding dimension mismatch: expected {dimension}, got {embedding.shape[1]}")
+    index.add(np.array(embedding))
+    return summary
