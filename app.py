@@ -1,46 +1,31 @@
 import streamlit as st
 from PyPDF2 import PdfReader
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-import torch
-import faiss
-import numpy as np
+import summarizeText
 
-# Import functions from summarize.py
-from summarizeText import generate_summary, embed_text, add_to_index
-
-# Define your Hugging Face token
-HUGGINGFACE_TOKEN = "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"
-
-# Load model and tokenizer
-model_name = "t5-small"
-tokenizer = T5Tokenizer.from_pretrained(model_name, token=HUGGINGFACE_TOKEN)
-model = T5ForConditionalGeneration.from_pretrained(model_name, token=HUGGINGFACE_TOKEN)
-
-# Initialize FAISS index
-dimension = 512  # Adjust according to your model's output size
-index = faiss.IndexFlatL2(dimension)
+st.title("Research Paper Summarizer")
 
 def extract_text_from_pdf(file):
     text = ""
-    pdf_reader = PdfReader(file)
-    for page in pdf_reader.pages:
-        text += page.extract_text()
+    try:
+        pdf = PdfReader(file)
+        for page in pdf.pages:
+            text += page.extract_text()
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {e}")
     return text
 
-st.title("Document Summarizer and Search")
-
-# PDF Upload
 uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 if uploaded_file is not None:
     text = extract_text_from_pdf(uploaded_file)
-    st.text_area("Extracted Text:", text, height=200)
-
-# Add text to index
-st.header("Add Text to Index")
-if st.button("Add to Index"):
     if text:
-        try:
-            summary = add_to_index(text)
+        cleaned_text = summarizeText.clean_text(text)
+        abstract, conclusion = summarizeText.extract_abstract_and_conclusion(cleaned_text)
+        st.subheader("Extracted Abstract:")
+        st.text_area("Abstract:", value=abstract, height=150)
+        st.subheader("Extracted Conclusion:")
+        st.text_area("Conclusion:", value=conclusion, height=150)
+
+        if st.button("Add to Index"):
+            combined_text = f"Abstract: {abstract}\n\nConclusion: {conclusion}"
+            summary = summarizeText.chunk_and_summarize(combined_text)
             st.success(f"Added to index with summary: {summary}")
-        except Exception as e:
-            st.error(f"Error: {e}")
